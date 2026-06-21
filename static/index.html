@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>起点AI · API 中转站</title>
+<style>
+  :root {
+    --bg: #0f0f13;
+    --card: #1a1a24;
+    --border: #2a2a3a;
+    --accent: #7c5cfc;
+    --accent-hover: #6a4de0;
+    --text: #e8e8f0;
+    --muted: #8888a0;
+    --success: #34d399;
+    --danger: #f87171;
+    --radius: 12px;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg); color: var(--text); min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  .container { max-width: 720px; width: 100%; padding: 40px 20px; }
+  .header { text-align: center; margin-bottom: 40px; }
+  .header h1 {
+    font-size: 28px; font-weight: 700;
+    background: linear-gradient(135deg, #7c5cfc, #a78bfa);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .header p { color: var(--muted); margin-top: 8px; font-size: 14px; }
+  .header .domain {
+    display: inline-block; margin-top: 12px;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 16px;
+    font-size: 13px; color: var(--muted);
+  }
+  .tabs { display: flex; gap: 4px; margin-bottom: 24px; background: var(--card); border-radius: var(--radius); padding: 4px; }
+  .tab { flex:1; padding: 10px; text-align:center; border:none; background:transparent; color:var(--muted); cursor:pointer; border-radius:8px; font-size:14px; transition:all .2s; }
+  .tab.active { background: var(--accent); color: #fff; }
+  .tab:hover:not(.active) { color: var(--text); }
+  .panel { display:none; }
+  .panel.active { display:block; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; margin-bottom: 16px; }
+  .card h2 { font-size: 16px; font-weight: 600; margin-bottom: 16px; }
+  .form-group { margin-bottom: 16px; }
+  .form-group label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .form-group input {
+    width: 100%; padding: 10px 14px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--bg);
+    color: var(--text); font-size: 14px; outline: none; transition: border .2s;
+  }
+  .form-group input:focus { border-color: var(--accent); }
+  .btn {
+    width: 100%; padding: 10px; border: none; border-radius: 8px;
+    font-size: 14px; font-weight: 600; cursor: pointer; transition: all .2s;
+  }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+  .btn-sm { padding: 6px 14px; width: auto; font-size: 12px; }
+
+  .message { padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-top: 12px; display:none; }
+  .message.success { display:block; background: rgba(52,211,153,.1); border: 1px solid rgba(52,211,153,.3); color: var(--success); }
+  .message.error { display:block; background: rgba(248,113,113,.1); border: 1px solid rgba(248,113,113,.3); color: var(--danger); }
+  .message.info { display:block; background: rgba(124,92,252,.1); border: 1px solid rgba(124,92,252,.3); color: var(--accent); }
+
+  .stat-row { display: flex; gap: 12px; margin-bottom: 16px; }
+  .stat-box { flex: 1; background: var(--bg); border-radius: 8px; padding: 16px; text-align: center; }
+  .stat-box .num { font-size: 24px; font-weight: 700; color: var(--accent); }
+  .stat-box .label { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+  .key-display {
+    background: var(--bg); border-radius: 8px; padding: 12px 16px;
+    font-family: monospace; font-size: 13px; word-break: break-all;
+    border: 1px solid var(--border); margin: 8px 0;
+  }
+  .key-display .copy-btn {
+    float: right; padding: 4px 10px; border: 1px solid var(--border);
+    border-radius: 6px; background: transparent; color: var(--muted);
+    cursor: pointer; font-size: 12px; transition: all .2s;
+  }
+  .key-display .copy-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  .code-block {
+    background: var(--bg); border-radius: 8px; padding: 12px 16px;
+    font-family: monospace; font-size: 13px; line-height: 1.6;
+    border: 1px solid var(--border); overflow-x: auto;
+    white-space: pre-wrap; color: var(--text); margin: 8px 0;
+  }
+
+  .footer { text-align: center; color: var(--muted); font-size: 12px; margin-top: 40px; padding-bottom: 40px; }
+  .footer a { color: var(--accent); text-decoration: none; }
+
+  .loading { display: inline-block; width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .6s linear infinite; vertical-align: middle; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  @media (max-width: 600px) {
+    .container { padding: 20px 16px; }
+    .stat-row { flex-direction: column; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header">
+    <h1>起点AI · API</h1>
+    <p>基于 kie.ai 的 AI 图片/视频生成 API 中转站</p>
+    <div class="domain">qidianai.indevs.in</div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('register')">注册</button>
+    <button class="tab" onclick="switchTab('login')">我的面板</button>
+    <button class="tab" onclick="switchTab('usage')">使用说明</button>
+  </div>
+
+  <!-- 注册面板 -->
+  <div id="panel-register" class="panel active">
+    <div class="card">
+      <h2>获取 API Key</h2>
+      <div class="form-group">
+        <label>昵称</label>
+        <input type="text" id="reg-name" placeholder="输入你的昵称" maxlength="30">
+      </div>
+      <button class="btn btn-primary" id="reg-btn" onclick="register()">注册 · 免费领取 10 积分</button>
+      <div id="reg-result" class="message"></div>
+      <div id="reg-success" style="display:none">
+        <p style="margin:12px 0 8px;font-size:13px;color:var(--muted)">你的 API Key（请妥善保存，只显示一次）：</p>
+        <div class="key-display">
+          <span id="reg-key"></span>
+          <button class="copy-btn" onclick="copyKey()">复制</button>
+        </div>
+        <p style="font-size:12px;color:var(--muted);margin-top:8px">
+          已有账号？<a href="#" onclick="switchTab('login');return false" style="color:var(--accent)">点此查看</a>
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 登录/面板 -->
+  <div id="panel-login" class="panel">
+    <div class="card">
+      <h2>查询余额和用量</h2>
+      <div class="form-group">
+        <label>API Key</label>
+        <input type="text" id="login-key" placeholder="粘贴你的 API Key">
+      </div>
+      <button class="btn btn-primary" onclick="checkBalance()">查询</button>
+      <div id="login-result" class="message"></div>
+    </div>
+
+    <div id="dashboard" style="display:none">
+      <div class="stat-row">
+        <div class="stat-box"><div class="num" id="d-balance">0</div><div class="label">余额（积分）</div></div>
+        <div class="stat-box"><div class="num" id="d-used">0</div><div class="label">已消耗</div></div>
+        <div class="stat-box"><div class="num" id="d-calls">0</div><div class="label">调用次数</div></div>
+      </div>
+      <div class="card">
+        <h2>你的 API Key</h2>
+        <div class="key-display" id="d-key-display"></div>
+      </div>
+      <div class="card">
+        <h2>调用示例</h2>
+        <div class="code-block" id="d-curl-example"></div>
+      </div>
+      <div class="card" style="border-color: rgba(248,113,113,.3);">
+        <h2 style="color:var(--danger)">积分不足？</h2>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
+          联系管理员充值，扫码付款后截图发给对方。
+        </p>
+        <button class="btn btn-sm" style="border:1px solid var(--border);background:transparent;color:var(--text)" onclick="copyAdminContact()">复制管理员联系方式</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 使用说明 -->
+  <div id="panel-usage" class="panel">
+    <div class="card">
+      <h2>支持什么？</h2>
+      <p style="font-size:13px;color:var(--muted);line-height:1.8">
+        ✅ 图片生成：z-image、Google Imagen、Flux、SDXL 等<br>
+        ✅ 视频生成：Hailuo、Kling（即将开放）<br>
+        ✅ OpenAI 兼容格式，可直接用 OpenAI SDK 调用
+      </p>
+    </div>
+    <div class="card">
+      <h2>价格</h2>
+      <p style="font-size:13px;color:var(--muted);line-height:1.8">
+        z-image：1 积分/张<br>
+        Google Imagen：3 积分/张<br>
+        Flux 系列：2 积分/张<br>
+        视频：4-5 积分/个
+      </p>
+    </div>
+    <div class="card">
+      <h2>如何调用？</h2>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:8px">Python:</p>
+      <div class="code-block">import openai
+client = openai.OpenAI(
+    base_url="https://qidianai.indevs.in/v1",
+    api_key="你的API Key"
+)
+resp = client.images.generate(
+    model="z-image",
+    prompt="一只白色卡通熊",
+    n=1, size="1024x1024"
+)
+print(resp.data[0].url)</div>
+      <p style="font-size:13px;color:var(--muted);margin:12px 0 8px">curl:</p>
+      <div class="code-block">curl https://qidianai.indevs.in/v1/images/generations \
+  -H "Authorization: Bearer 你的API Key" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"z-image","prompt":"白色卡通熊","size":"1024x1024"}'</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <p>起点AI · qidianai.indevs.in</p>
+  </div>
+</div>
+
+<script>
+let currentKey = '';
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelector(`.tab[onclick*="${name}"]`).classList.add('active');
+  document.getElementById(`panel-${name}`).classList.add('active');
+}
+
+async function register() {
+  const name = document.getElementById('reg-name').value.trim();
+  const btn = document.getElementById('reg-btn');
+  const result = document.getElementById('reg-result');
+  const success = document.getElementById('reg-success');
+
+  result.className = 'message';
+  result.style.display = 'none';
+  success.style.display = 'none';
+
+  if (!name) { showMsg('reg-result', '请输入昵称', 'error'); return; }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loading"></span>注册中...';
+
+  try {
+    const r = await fetch('/api/register', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({name})
+    });
+    const d = await r.json();
+    if (r.ok) {
+      currentKey = d.api_key;
+      document.getElementById('reg-key').textContent = d.api_key;
+      success.style.display = 'block';
+      showMsg('reg-result', `注册成功！送你 ${d.balance} 积分`, 'success');
+      document.getElementById('reg-name').value = '';
+    } else {
+      showMsg('reg-result', d.detail || '注册失败', 'error');
+    }
+  } catch(e) {
+    showMsg('reg-result', '网络错误，请重试', 'error');
+  }
+  btn.disabled = false;
+  btn.textContent = '注册 · 免费领取 10 积分';
+}
+
+async function checkBalance() {
+  const key = document.getElementById('login-key').value.trim();
+  const result = document.getElementById('login-result');
+  const dashboard = document.getElementById('dashboard');
+
+  result.className = 'message';
+  result.style.display = 'none';
+  dashboard.style.display = 'none';
+
+  if (!key) { showMsg('login-result', '请输入 API Key', 'error'); return; }
+
+  try {
+    const r = await fetch('/api/verify-key', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({api_key: key})
+    });
+    const d = await r.json();
+    if (r.ok) {
+      document.getElementById('d-balance').textContent = d.balance;
+      document.getElementById('d-used').textContent = d.total_used;
+      document.getElementById('d-calls').textContent = d.total_calls;
+      document.getElementById('d-key-display').textContent = key;
+      document.getElementById('d-curl-example').textContent =
+        `curl https://qidianai.indevs.in/v1/images/generations \\\n  -H "Authorization: Bearer ${key}" \\\n  -H "Content-Type: application/json" \\\n  -d '{"model":"z-image","prompt":"白色卡通熊"}'`;
+      dashboard.style.display = 'block';
+      showMsg('login-result', '查询成功', 'success');
+    } else {
+      showMsg('login-result', d.detail || '无效的 Key', 'error');
+    }
+  } catch(e) {
+    showMsg('login-result', '网络错误', 'error');
+  }
+}
+
+function copyKey() {
+  const key = document.getElementById('reg-key').textContent;
+  navigator.clipboard.writeText(key).then(() => {
+    const btn = document.querySelector('#reg-success .copy-btn');
+    btn.textContent = '已复制!';
+    setTimeout(() => btn.textContent = '复制', 2000);
+  });
+}
+
+function copyAdminContact() {
+  navigator.clipboard.writeText('qidianai.indevs.in - 联系管理员充值');
+  const btn = event.target;
+  btn.textContent = '已复制!';
+  setTimeout(() => btn.textContent = '复制管理员联系方式', 2000);
+}
+
+function showMsg(id, text, type) {
+  const el = document.getElementById(id);
+  el.textContent = text;
+  el.className = `message ${type}`;
+  el.style.display = 'block';
+}
+</script>
+</body>
+</html>

@@ -19,13 +19,17 @@ Endpoints:
 import base64
 import json
 import logging
+import secrets
 import time
 import uuid
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Optional
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from config import settings
@@ -59,10 +63,19 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="kie.ai Relay",
-    version="0.2.0",
+    version="0.3.0",
     description="OpenAI-compatible API proxy for kie.ai with billing",
     lifespan=lifespan,
 )
+
+# Serve the web UI
+STATIC_DIR = Path(__file__).parent / "static"
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+    @app.get("/", response_class=HTMLResponse, include_in_schema=False)
+    async def index():
+        return (STATIC_DIR / "index.html").read_text(encoding="utf-8")
 
 
 # ── Auth helpers ──────────────────────────────────────────────
@@ -190,6 +203,52 @@ class CreateUserRequest(BaseModel):
 class TopupRequest(BaseModel):
     api_key: str = Field(..., description="User's API key (full)")
     amount: float = Field(..., gt=0, description="Amount to add")
+
+
+# Web page request models
+class RegisterRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=30,
+                      description="User nickname")
+
+
+class VerifyKeyRequest(BaseModel):
+    api_key: str = Field(..., description="User's API key")
+
+
+# ── Web UI routes ──────────────────────────────────────────────
+
+@app.post("/api/register")
+async def web_register(body: RegisterRequest):
+    """Public registration: creates a user with free initial credits."""
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="昵称不能为空")
+
+    # Give 10 free credits to new users
+    user = user_manager.create_user(name, initial_balance=10.0)
+    logger.info("New registration: name=%s key=%s", name, user["api_key"][:12]+"...")
+    return {
+        "message": "注册成功",
+        "api_key": user["api_key"],
+        "name": user["name"],
+        "balance": user["balance"],
+    }
+
+
+@app.post("/api/verify-key")
+async def web_verify_key(body: VerifyKeyRequest):
+    """Verify an API key and return user info."""
+    user = user_manager.get_user_by_key(body.api_key)
+    if not user:
+        raise HTTPException(status_code=404, detail="无效的 API Key")
+    if not user.get("enabled", True):
+        raise HTTPException(status_code=403, detail="该账号已被禁用")
+    return {
+        "name": user["name"],
+        "balance": user["balance"],
+        "total_used": user["total_used"],
+        "total_calls": user["total_calls"],
+    }
 
 
 # ── Helpers ─────────────────────────────────────────────────────
