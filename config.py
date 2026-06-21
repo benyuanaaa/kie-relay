@@ -27,6 +27,15 @@ class Settings(BaseSettings):
     # If set, clients must provide this key; otherwise any key is accepted
     relay_api_key: Optional[str] = None
 
+    # Alipay settings
+    alipay_app_id: str = ""
+    alipay_notify_url: str = "https://qidianai.indevs.in"
+    # Paths to key files (relative to project root)
+    alipay_private_key_path: str = "alipay_keys/app_private_key.pem"
+    alipay_public_key_path: str = "alipay_keys/app_alipay_public_key.pem"
+    # Set to True to use sandbox environment for testing
+    alipay_sandbox: bool = False
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",

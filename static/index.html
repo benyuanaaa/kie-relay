@@ -61,17 +61,22 @@
   .btn-primary:hover { background: var(--accent-hover); }
   .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
   .btn-sm { padding: 6px 14px; width: auto; font-size: 12px; }
-
   .message { padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-top: 12px; display:none; }
   .message.success { display:block; background: rgba(52,211,153,.1); border: 1px solid rgba(52,211,153,.3); color: var(--success); }
   .message.error { display:block; background: rgba(248,113,113,.1); border: 1px solid rgba(248,113,113,.3); color: var(--danger); }
   .message.info { display:block; background: rgba(124,92,252,.1); border: 1px solid rgba(124,92,252,.3); color: var(--accent); }
-
   .stat-row { display: flex; gap: 12px; margin-bottom: 16px; }
   .stat-box { flex: 1; background: var(--bg); border-radius: 8px; padding: 16px; text-align: center; }
   .stat-box .num { font-size: 24px; font-weight: 700; color: var(--accent); }
   .stat-box .label { font-size: 12px; color: var(--muted); margin-top: 4px; }
-
+  .amount-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; margin-bottom: 16px; }
+  .amount-btn { padding: 10px; border:1px solid var(--border); border-radius:8px; background:var(--bg); color:var(--text); cursor:pointer; font-size:14px; font-weight:600; transition:all .2s; text-align:center; }
+  .amount-btn:hover { border-color:var(--accent); }
+  .amount-btn.active { border-color:var(--accent); background:rgba(124,92,252,.15); color:var(--accent); }
+  .amount-btn .small { font-size:11px; font-weight:400; color:var(--muted); display:block; margin-top:2px; }
+  .qr-container { text-align:center; padding:20px 0; }
+  .qr-container img { width:200px; height:200px; border-radius:8px; background:#fff; padding:8px; }
+  .qr-container p { margin-top:12px; font-size:13px; color:var(--muted); }
   .key-display {
     background: var(--bg); border-radius: 8px; padding: 12px 16px;
     font-family: monospace; font-size: 13px; word-break: break-all;
@@ -83,23 +88,20 @@
     cursor: pointer; font-size: 12px; transition: all .2s;
   }
   .key-display .copy-btn:hover { border-color: var(--accent); color: var(--accent); }
-
   .code-block {
     background: var(--bg); border-radius: 8px; padding: 12px 16px;
     font-family: monospace; font-size: 13px; line-height: 1.6;
     border: 1px solid var(--border); overflow-x: auto;
     white-space: pre-wrap; color: var(--text); margin: 8px 0;
   }
-
   .footer { text-align: center; color: var(--muted); font-size: 12px; margin-top: 40px; padding-bottom: 40px; }
   .footer a { color: var(--accent); text-decoration: none; }
-
   .loading { display: inline-block; width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .6s linear infinite; vertical-align: middle; margin-right: 6px; }
   @keyframes spin { to { transform: rotate(360deg); } }
-
   @media (max-width: 600px) {
     .container { padding: 20px 16px; }
     .stat-row { flex-direction: column; }
+    .amount-grid { grid-template-columns: repeat(2,1fr); }
   }
 </style>
 </head>
@@ -118,7 +120,7 @@
     <button class="tab" onclick="switchTab('usage')">使用说明</button>
   </div>
 
-  <!-- 注册面板 -->
+  <!-- 注册 -->
   <div id="panel-register" class="panel active">
     <div class="card">
       <h2>获取 API Key</h2>
@@ -130,18 +132,13 @@
       <div id="reg-result" class="message"></div>
       <div id="reg-success" style="display:none">
         <p style="margin:12px 0 8px;font-size:13px;color:var(--muted)">你的 API Key（请妥善保存，只显示一次）：</p>
-        <div class="key-display">
-          <span id="reg-key"></span>
-          <button class="copy-btn" onclick="copyKey()">复制</button>
-        </div>
-        <p style="font-size:12px;color:var(--muted);margin-top:8px">
-          已有账号？<a href="#" onclick="switchTab('login');return false" style="color:var(--accent)">点此查看</a>
-        </p>
+        <div class="key-display"><span id="reg-key"></span><button class="copy-btn" onclick="copyKey()">复制</button></div>
+        <p style="font-size:12px;color:var(--muted);margin-top:8px">已有账号？<a href="#" onclick="switchTab('login');return false" style="color:var(--accent)">点此查看</a></p>
       </div>
     </div>
   </div>
 
-  <!-- 登录/面板 -->
+  <!-- 我的面板 -->
   <div id="panel-login" class="panel">
     <div class="card">
       <h2>查询余额和用量</h2>
@@ -159,6 +156,26 @@
         <div class="stat-box"><div class="num" id="d-used">0</div><div class="label">已消耗</div></div>
         <div class="stat-box"><div class="num" id="d-calls">0</div><div class="label">调用次数</div></div>
       </div>
+
+      <!-- 充值 -->
+      <div class="card" id="recharge-card">
+        <h2>充值</h2>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:12px">选择金额，支付宝扫码付款自动到账</p>
+        <div class="amount-grid">
+          <div class="amount-btn active" onclick="selectAmount(this,10)">¥10<span class="small">100 积分</span></div>
+          <div class="amount-btn" onclick="selectAmount(this,30)">¥30<span class="small">300 积分</span></div>
+          <div class="amount-btn" onclick="selectAmount(this,50)">¥50<span class="small">500 积分</span></div>
+          <div class="amount-btn" onclick="selectAmount(this,100)">¥100<span class="small">1000 积分</span></div>
+        </div>
+        <button class="btn btn-primary" id="recharge-btn" onclick="startRecharge()">支付宝充值</button>
+        <div id="recharge-result" class="message"></div>
+        <div id="recharge-qr" class="qr-container" style="display:none">
+          <p>请用支付宝扫码付款</p>
+          <img id="qr-code-img" src="" alt="支付宝二维码">
+          <p id="qr-status" style="font-size:12px">等待支付中...</p>
+        </div>
+      </div>
+
       <div class="card">
         <h2>你的 API Key</h2>
         <div class="key-display" id="d-key-display"></div>
@@ -166,13 +183,6 @@
       <div class="card">
         <h2>调用示例</h2>
         <div class="code-block" id="d-curl-example"></div>
-      </div>
-      <div class="card" style="border-color: rgba(248,113,113,.3);">
-        <h2 style="color:var(--danger)">积分不足？</h2>
-        <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
-          联系管理员充值，扫码付款后截图发给对方。
-        </p>
-        <button class="btn btn-sm" style="border:1px solid var(--border);background:transparent;color:var(--text)" onclick="copyAdminContact()">复制管理员联系方式</button>
       </div>
     </div>
   </div>
@@ -213,18 +223,19 @@ print(resp.data[0].url)</div>
       <p style="font-size:13px;color:var(--muted);margin:12px 0 8px">curl:</p>
       <div class="code-block">curl https://qidianai.indevs.in/v1/images/generations \
   -H "Authorization: Bearer 你的API Key" \
-  -H "Content-Type: application/json" \
   -d '{"model":"z-image","prompt":"白色卡通熊","size":"1024x1024"}'</div>
     </div>
   </div>
 
   <div class="footer">
-    <p>起点AI · qidianai.indevs.in</p>
+    <p>起点AI · qidianai.indevs.in · 支付宝付款自动到账</p>
   </div>
 </div>
 
 <script>
 let currentKey = '';
+let selectedAmount = 10;
+let pollTimer = null;
 
 function switchTab(name) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -233,27 +244,22 @@ function switchTab(name) {
   document.getElementById(`panel-${name}`).classList.add('active');
 }
 
+function selectAmount(el, amount) {
+  document.querySelectorAll('.amount-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  selectedAmount = amount;
+}
+
 async function register() {
   const name = document.getElementById('reg-name').value.trim();
   const btn = document.getElementById('reg-btn');
   const result = document.getElementById('reg-result');
   const success = document.getElementById('reg-success');
-
-  result.className = 'message';
-  result.style.display = 'none';
-  success.style.display = 'none';
-
+  result.className = 'message'; result.style.display = 'none'; success.style.display = 'none';
   if (!name) { showMsg('reg-result', '请输入昵称', 'error'); return; }
-
-  btn.disabled = true;
-  btn.innerHTML = '<span class="loading"></span>注册中...';
-
+  btn.disabled = true; btn.innerHTML = '<span class="loading"></span>注册中...';
   try {
-    const r = await fetch('/api/register', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({name})
-    });
+    const r = await fetch('/api/register', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name}) });
     const d = await r.json();
     if (r.ok) {
       currentKey = d.api_key;
@@ -261,35 +267,22 @@ async function register() {
       success.style.display = 'block';
       showMsg('reg-result', `注册成功！送你 ${d.balance} 积分`, 'success');
       document.getElementById('reg-name').value = '';
-    } else {
-      showMsg('reg-result', d.detail || '注册失败', 'error');
-    }
-  } catch(e) {
-    showMsg('reg-result', '网络错误，请重试', 'error');
-  }
-  btn.disabled = false;
-  btn.textContent = '注册 · 免费领取 10 积分';
+    } else { showMsg('reg-result', d.detail || '注册失败', 'error'); }
+  } catch(e) { showMsg('reg-result', '网络错误，请重试', 'error'); }
+  btn.disabled = false; btn.textContent = '注册 · 免费领取 10 积分';
 }
 
 async function checkBalance() {
   const key = document.getElementById('login-key').value.trim();
   const result = document.getElementById('login-result');
   const dashboard = document.getElementById('dashboard');
-
-  result.className = 'message';
-  result.style.display = 'none';
-  dashboard.style.display = 'none';
-
+  result.className = 'message'; result.style.display = 'none'; dashboard.style.display = 'none';
   if (!key) { showMsg('login-result', '请输入 API Key', 'error'); return; }
-
   try {
-    const r = await fetch('/api/verify-key', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({api_key: key})
-    });
+    const r = await fetch('/api/verify-key', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({api_key: key}) });
     const d = await r.json();
     if (r.ok) {
+      currentKey = key;
       document.getElementById('d-balance').textContent = d.balance;
       document.getElementById('d-used').textContent = d.total_used;
       document.getElementById('d-calls').textContent = d.total_calls;
@@ -297,36 +290,64 @@ async function checkBalance() {
       document.getElementById('d-curl-example').textContent =
         `curl https://qidianai.indevs.in/v1/images/generations \\\n  -H "Authorization: Bearer ${key}" \\\n  -H "Content-Type: application/json" \\\n  -d '{"model":"z-image","prompt":"白色卡通熊"}'`;
       dashboard.style.display = 'block';
+      document.getElementById('recharge-qr').style.display = 'none';
       showMsg('login-result', '查询成功', 'success');
-    } else {
-      showMsg('login-result', d.detail || '无效的 Key', 'error');
+    } else { showMsg('login-result', d.detail || '无效的 Key', 'error'); }
+  } catch(e) { showMsg('login-result', '网络错误', 'error'); }
+}
+
+async function startRecharge() {
+  if (!currentKey) { showMsg('recharge-result', '请先在左侧输入 API Key 查询', 'error'); return; }
+  const btn = document.getElementById('recharge-btn');
+  const result = document.getElementById('recharge-result');
+  const qrDiv = document.getElementById('recharge-qr');
+  result.className = 'message'; result.style.display = 'none'; qrDiv.style.display = 'none';
+  if (pollTimer) clearInterval(pollTimer);
+
+  btn.disabled = true; btn.innerHTML = '<span class="loading"></span>创建订单...';
+  try {
+    const r = await fetch('/api/recharge', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({api_key: currentKey, amount: selectedAmount}) });
+    const d = await r.json();
+    if (r.ok) {
+      document.getElementById('qr-code-img').src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(d.qr_code_url)}`;
+      document.getElementById('qr-status').textContent = '⏳ 等待支付宝扫码付款...';
+      qrDiv.style.display = 'block';
+      showMsg('recharge-result', `订单已创建：¥${selectedAmount}`, 'success');
+      // 轮询订单状态
+      pollTimer = setInterval(() => pollOrder(d.order_id), 3000);
+    } else { showMsg('recharge-result', d.detail || '创建失败', 'error'); }
+  } catch(e) { showMsg('recharge-result', '网络错误', 'error'); }
+  btn.disabled = false; btn.textContent = '支付宝充值';
+}
+
+async function pollOrder(orderId) {
+  try {
+    const r = await fetch(`/api/recharge/${orderId}`);
+    const d = await r.json();
+    if (d.status === 'COMPLETED') {
+      clearInterval(pollTimer);
+      document.getElementById('qr-status').textContent = '✅ 支付成功！余额已到账';
+      document.getElementById('qr-status').style.color = '#34d399';
+      // 刷新余额
+      setTimeout(() => {
+        document.getElementById('recharge-qr').style.display = 'none';
+        checkBalance();
+      }, 2000);
     }
-  } catch(e) {
-    showMsg('login-result', '网络错误', 'error');
-  }
+  } catch(e) {}
 }
 
 function copyKey() {
   const key = document.getElementById('reg-key').textContent;
   navigator.clipboard.writeText(key).then(() => {
     const btn = document.querySelector('#reg-success .copy-btn');
-    btn.textContent = '已复制!';
-    setTimeout(() => btn.textContent = '复制', 2000);
+    btn.textContent = '已复制!'; setTimeout(() => btn.textContent = '复制', 2000);
   });
-}
-
-function copyAdminContact() {
-  navigator.clipboard.writeText('qidianai.indevs.in - 联系管理员充值');
-  const btn = event.target;
-  btn.textContent = '已复制!';
-  setTimeout(() => btn.textContent = '复制管理员联系方式', 2000);
 }
 
 function showMsg(id, text, type) {
   const el = document.getElementById(id);
-  el.textContent = text;
-  el.className = `message ${type}`;
-  el.style.display = 'block';
+  el.textContent = text; el.className = `message ${type}`; el.style.display = 'block';
 }
 </script>
 </body>

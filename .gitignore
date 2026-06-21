@@ -17,3 +17,9 @@ Thumbs.db
 
 # Koyeb
 .koyeb/
+
+# Data
+data/
+
+# Alipay keys
+alipay_keys/

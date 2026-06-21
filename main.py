@@ -35,6 +35,10 @@ from pydantic import BaseModel, Field
 from config import settings
 from kie_client import KieClient
 import user_manager
+import orders as order_manager
+
+# Alipay (may not be configured)
+alipay_client: Optional["AlipayClient"] = None
 
 # ── Logging ────────────────────────────────────────────────────
 logging.basicConfig(
@@ -49,16 +53,37 @@ kie_client: Optional[KieClient] = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global kie_client
+    global kie_client, alipay_client
     if not settings.kie_api_key or settings.kie_api_key in ("", "your-kie-api-key-here"):
-        logger.warning("KIE_API_KEY 未配置！请在 .env 文件中设置")
+        logger.warning("KIE_API_KEY not configured")
     kie_client = KieClient(
         api_key=settings.kie_api_key,
         base_url=settings.kie_api_base,
     )
+
+    # Init Alipay if configured
+    if settings.alipay_app_id and settings.alipay_app_id not in ("", "your-app-id"):
+        try:
+            from alipay_client import AlipayClient
+            global alipay_client  # noqa: PLW0602
+            alipay_client = AlipayClient(
+                app_id=settings.alipay_app_id,
+                private_key_path=settings.alipay_private_key_path,
+                alipay_public_key_path=settings.alipay_public_key_path,
+                notify_url=settings.alipay_notify_url,
+                sandbox=settings.alipay_sandbox,
+            )
+            logger.info("Alipay initialized: app_id=%s", settings.alipay_app_id)
+        except Exception as e:
+            logger.warning("Alipay init failed: %s (skip)", e)
+    else:
+        logger.info("Alipay not configured (skip)")
+
     logger.info("kie.ai relay started on %s:%s", settings.host, settings.port)
     yield
     await kie_client.close()
+    if alipay_client:
+        await alipay_client.close()
 
 
 app = FastAPI(
@@ -215,6 +240,11 @@ class VerifyKeyRequest(BaseModel):
     api_key: str = Field(..., description="User's API key")
 
 
+class RechargeRequest(BaseModel):
+    api_key: str = Field(..., description="User's API key")
+    amount: float = Field(..., ge=1, le=9999, description="Recharge amount (CNY)")
+
+
 # ── Web UI routes ──────────────────────────────────────────────
 
 @app.post("/api/register")
@@ -250,8 +280,69 @@ async def web_verify_key(body: VerifyKeyRequest):
         "total_calls": user["total_calls"],
     }
 
+@app.post("/api/recharge")
+async def web_recharge(body: RechargeRequest):
+    """Create a payment order for the user to scan with Alipay."""
+    user = user_manager.get_user_by_key(body.api_key)
+    if not user:
+        raise HTTPException(status_code=404, detail="Invalid API key")
+    if not user.get("enabled", True):
+        raise HTTPException(status_code=403, detail="Account disabled")
+    if not alipay_client:
+        raise HTTPException(status_code=503, detail="支付宝暂未开通")
 
-# ── Helpers ─────────────────────────────────────────────────────
+    order = order_manager.create_order(body.api_key, body.amount)
+    try:
+        payment = await alipay_client.create_qr_payment(
+            order["order_id"], body.amount
+        )
+        return {
+            "order_id": order["order_id"],
+            "qr_code_url": payment["qr_code"],
+            "amount": body.amount,
+        }
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+@app.get("/api/recharge/{order_id}")
+async def web_recharge_status(order_id: str):
+    """Check the status of a payment order."""
+    order = order_manager.get_order(order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    return {
+        "order_id": order["order_id"],
+        "status": order["status"],
+        "amount": order["amount"],
+    }
+
+@app.post("/api/alipay/notify")
+async def web_alipay_notify(request: Request):
+    """Alipay async notification callback."""
+    global alipay_client
+    form = await request.form()
+    form_data = dict(form)
+
+    if not alipay_client:
+        logger.warning("Alipay not configured, ignoring notification")
+        return "failure"
+
+    result = alipay_client.parse_notification(form_data)
+    if not result:
+        logger.warning("Invalid Alipay notification")
+        return "failure"
+
+    # Complete the order and add balance
+    order = order_manager.complete_order(result["out_trade_no"], result["trade_no"])
+    if order:
+        user_manager.topup_user(order["api_key"], result["receipt_amount"])
+        logger.info(
+            "Payment success: order=%s user_key=%s amount=%.2f",
+            result["out_trade_no"],
+            order["api_key"][:12] + "...",
+            result["receipt_amount"],
+        )
+    return "success"
 
 STANDARD_RATIOS = {"1:1": "1:1", "4:3": "4:3", "3:4": "3:4", "16:9": "16:9", "9:16": "9:16"}
 
