@@ -1,0 +1,26 @@
+name: kie-relay
+service:
+  name: kie-relay
+  port: 5001
+  source:
+    github:
+      branch: main
+      build: pip install -r requirements.txt
+      run: uvicorn main:app --host 0.0.0.0 --port 5001 --log-level info
+  health:
+    path: /health
+    interval: 30
+  scalings:
+    min: 0
+    max: 1
+  env:
+    - key: KIE_API_KEY
+      secret: true
+    - key: RELAY_API_KEY
+      secret: true
+    - key: POLL_TIMEOUT
+      value: "60"
+    - key: POLL_INTERVAL
+      value: "1"
+    - key: LOG_LEVEL
+      value: "INFO"
