@@ -117,6 +117,7 @@
   <div class="tabs">
     <button class="tab active" onclick="switchTab('register')">注册</button>
     <button class="tab" onclick="switchTab('login')">我的面板</button>
+    <button class="tab" onclick="switchTab('generate')">在线生图</button>
     <button class="tab" onclick="switchTab('usage')">使用说明</button>
   </div>
 
@@ -187,22 +188,115 @@
     </div>
   </div>
 
+  <!-- 在线生图 -->
+  <div id="panel-generate" class="panel">
+    <div class="card">
+      <h2>在线生成图片</h2>
+      <div class="form-group">
+        <label>模型选择</label>
+        <select id="gen-model" style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:14px;outline:none;">
+          <option value="nano-banana-pro">Nano Banana Pro (推荐·文生图/图生图)</option>
+          <option value="gpt-image-2">GPT-Image-2 (文生图)</option>
+          <option value="gpt-image-2-image-to-image">GPT-Image-2 (图生图)</option>
+          <option value="z-image">Z-Image</option>
+          <option value="google/imagen-4">Google Imagen 4</option>
+          <option value="google/imagen-4-fast">Google Imagen 4 Fast</option>
+          <option value="ideogram-v3">Ideogram V3</option>
+          <option value="bytedance/seedream">Seedream</option>
+          <option value="grok-imagine">Grok Imagine</option>
+          <option value="recraft-v3">Recraft V3</option>
+          <option value="black-forest-labs/flux-pro">Flux Pro</option>
+          <option value="black-forest-labs/flux-dev">Flux Dev</option>
+          <option value="stability-ai/sdxl">SDXL</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>图片尺寸</label>
+        <select id="gen-size" style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:14px;outline:none;">
+          <option value="1024x1024">1:1 方形 (1024x1024)</option>
+          <option value="1024x1792">9:16 竖屏 (1024x1792) — 短视频</option>
+          <option value="1792x1024">16:9 横屏 (1792x1024)</option>
+          <option value="768x1024">3:4 (768x1024)</option>
+          <option value="1024x768">4:3 (1024x768)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>正向提示词 (Prompt)</label>
+        <textarea id="gen-prompt" rows="4" style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:14px;outline:none;resize:vertical;font-family:inherit;" placeholder="描述你想要生成的图片，例如：一只白色卡通北极熊，头戴金色船长帽，站在莫斯科红场前"></textarea>
+      </div>
+      <div class="form-group">
+        <label>负面提示词 (Negative Prompt，可选)</label>
+        <input type="text" id="gen-negative" placeholder="不想要的内容，如：模糊、低质量、变形" style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:14px;outline:none;">
+      </div>
+      <div class="form-group">
+        <label>参考图片（图生图，可选）</label>
+        <div style="display:flex;gap:8px;">
+          <input type="file" id="gen-image-file" accept="image/png,image/jpeg,image/gif,image/webp" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:13px;">
+          <button class="btn btn-sm" id="gen-upload-btn" onclick="uploadImage()" style="width:auto;padding:8px 16px;margin-top:0;background:var(--bg);border:1px solid var(--border);color:var(--text);">上传</button>
+        </div>
+        <div id="gen-image-url-display" style="display:none;margin-top:6px;padding:6px 10px;background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.3);border-radius:6px;font-size:12px;color:var(--success);word-break:break-all;"></div>
+        <input type="hidden" id="gen-image-url" value="">
+        <p style="font-size:12px;color:var(--muted);margin-top:4px">上传图片作为参考，AI 将基于该图片生成变体。留空则为文生图</p>
+      </div>
+      <div class="form-group">
+        <label>API Key</label>
+        <input type="text" id="gen-apikey" placeholder="输入你的 API Key" style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:14px;outline:none;">
+      </div>
+      <div class="form-group" style="display:flex;gap:8px;">
+        <div style="flex:1">
+          <label>生成数量</label>
+          <select id="gen-n" style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:14px;outline:none;">
+            <option value="1">1 张</option>
+            <option value="2">2 张</option>
+            <option value="4">4 张</option>
+          </select>
+        </div>
+        <div style="flex:1">
+          <label>&nbsp;</label>
+          <button class="btn btn-primary" id="gen-btn" onclick="generateImage()" style="margin-top:0;">✨ 生成图片</button>
+        </div>
+      </div>
+      <div id="gen-result" class="message"></div>
+    </div>
+
+    <!-- 生成结果展示 -->
+    <div id="gen-output" style="display:none;">
+      <div class="card">
+        <h2>生成结果</h2>
+        <div id="gen-cost-info" style="font-size:13px;color:var(--muted);margin-bottom:12px;"></div>
+        <div id="gen-images" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:16px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 图片预览灯箱 -->
+  <div id="lightbox" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.92);z-index:9999;cursor:zoom-out;justify-content:center;align-items:center;flex-direction:column;" onclick="closeLightbox(event)">
+    <img id="lightbox-img" src="" style="max-width:95%;max-height:88vh;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,0.5);object-fit:contain;">
+    <div style="margin-top:16px;display:flex;gap:12px;">
+      <a id="lightbox-download" download="image.png" style="padding:8px 20px;border-radius:8px;background:var(--accent);color:#fff;text-decoration:none;font-size:14px;cursor:pointer;">⬇ 下载原图</a>
+      <button onclick="document.getElementById('lightbox').style.display='none'" style="padding:8px 20px;border-radius:8px;background:rgba(255,255,255,0.15);color:#fff;border:none;font-size:14px;cursor:pointer;">✕ 关闭</button>
+    </div>
+  </div>
+
   <!-- 使用说明 -->
   <div id="panel-usage" class="panel">
     <div class="card">
       <h2>支持什么？</h2>
       <p style="font-size:13px;color:var(--muted);line-height:1.8">
-        ✅ 图片生成：z-image、Google Imagen、Flux、SDXL 等<br>
+        ✅ 图片生成：Nano Banana Pro、GPT-Image-2、Z-Image、Google Imagen、Flux、SDXL 等<br>
+        ✅ 图生图：Nano Banana Edit（支持上传参考图生成变体）<br>
+        ✅ 文件上传至腾讯云 COS 存储，永久保存不丢失<br>
         ✅ 视频生成：Hailuo、Kling（即将开放）<br>
+        ✅ <strong>在线生图</strong>：直接在网页中生成图片，无需写代码<br>
         ✅ OpenAI 兼容格式，可直接用 OpenAI SDK 调用
       </p>
     </div>
     <div class="card">
       <h2>价格</h2>
       <p style="font-size:13px;color:var(--muted);line-height:1.8">
-        z-image：1 积分/张<br>
-        Google Imagen：3 积分/张<br>
-        Flux 系列：2 积分/张<br>
+        Z-Image / SDXL：1 积分/张<br>
+        Nano Banana Pro / Nano Banana Edit / Flux 系列 / Seedream / Grok / Recraft：2 积分/张<br>
+        Google Imagen / GPT-Image-2：3 积分/张<br>
         视频：4-5 积分/个
       </p>
     </div>
@@ -348,6 +442,221 @@ function copyKey() {
 function showMsg(id, text, type) {
   const el = document.getElementById(id);
   el.textContent = text; el.className = `message ${type}`; el.style.display = 'block';
+}
+
+// ── 在线生图 ──────────────────────────────────────────────
+
+async function uploadImage() {
+  const fileInput = document.getElementById('gen-image-file');
+  const apiKey = document.getElementById('gen-apikey').value.trim();
+  const display = document.getElementById('gen-image-url-display');
+  const urlField = document.getElementById('gen-image-url');
+
+  if (!apiKey) { showMsg('gen-result', '请先输入 API Key', 'error'); return; }
+  if (!fileInput.files || !fileInput.files[0]) { showMsg('gen-result', '请选择要上传的图片', 'error'); return; }
+
+  const formData = new FormData();
+  formData.append('file', fileInput.files[0]);
+
+  const btn = document.getElementById('gen-upload-btn');
+  btn.disabled = true; btn.textContent = '上传中...';
+
+  try {
+    const resp = await fetch('/api/upload', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}` },
+      body: formData,
+    });
+    const data = await resp.json();
+    if (resp.ok) {
+      urlField.value = data.url;
+      display.style.display = 'block';
+      const isLocal = data.url.startsWith('/uploads/');
+      if (isLocal) {
+        display.style.cssText = 'margin-top:6px;padding:6px 10px;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);border-radius:6px;font-size:12px;color:var(--danger);word-break:break-all;';
+        display.innerHTML = `⚠️ 文件已保存到本地，但图生图需要配置 COS 才能工作。<br>请在 .env 中设置 COS_SECRET_ID 和 COS_SECRET_KEY。<br><small>本地路径：${data.url}</small>`;
+      } else {
+        display.style.cssText = 'margin-top:6px;padding:6px 10px;background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.3);border-radius:6px;font-size:12px;color:var(--success);word-break:break-all;';
+        display.innerHTML = `✅ 已上传：<a href="${data.url}" target="_blank" style="color:var(--accent)">${data.url.substring(0, 60)}...</a>`;
+      }
+      btn.textContent = '已上传 ✓';
+      btn.style.borderColor = 'var(--success)';
+      btn.style.color = 'var(--success)';
+    } else {
+      showMsg('gen-result', `上传失败：${data.detail || '未知错误'}`, 'error');
+      btn.textContent = '上传';
+    }
+  } catch(e) {
+    showMsg('gen-result', `上传错误：${e.message}`, 'error');
+    btn.textContent = '上传';
+  }
+  btn.disabled = false;
+}
+
+async function generateImage() {
+  const model = document.getElementById('gen-model').value;
+  const prompt = document.getElementById('gen-prompt').value.trim();
+  const negative = document.getElementById('gen-negative').value.trim();
+  const imageUrl = document.getElementById('gen-image-url').value.trim();
+  const apiKey = document.getElementById('gen-apikey').value.trim();
+  const size = document.getElementById('gen-size').value;
+  const n = parseInt(document.getElementById('gen-n').value);
+  const btn = document.getElementById('gen-btn');
+  const result = document.getElementById('gen-result');
+  const output = document.getElementById('gen-output');
+  const imagesDiv = document.getElementById('gen-images');
+  const costInfo = document.getElementById('gen-cost-info');
+
+  result.className = 'message'; result.style.display = 'none';
+  output.style.display = 'none';
+  imagesDiv.innerHTML = '';
+
+  if (!apiKey) { showMsg('gen-result', '请输入 API Key', 'error'); return; }
+  if (!prompt) { showMsg('gen-result', '请输入正向提示词', 'error'); return; }
+
+  btn.disabled = true; btn.innerHTML = '<span class="loading"></span>生成中...';
+
+  try {
+    const body = {
+      model: model,
+      prompt: prompt,
+      n: n,
+      size: size,
+    };
+    if (negative) body.negative_prompt = negative;
+    if (imageUrl) body.image = imageUrl;
+
+    const resp = await fetch('/v1/images/generations', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(body),
+    });
+
+    const data = await resp.json();
+
+    if (!resp.ok) {
+      showMsg('gen-result', `生成失败：${data.detail || data.error || resp.statusText}`, 'error');
+      btn.disabled = false; btn.innerHTML = '✨ 生成图片';
+      return;
+    }
+
+    // 显示结果
+    output.style.display = 'block';
+    if (data.cost !== undefined) {
+      costInfo.textContent = `消耗积分：${data.cost} | 剩余积分：${data.balance_remaining}`;
+    }
+
+    if (data.data && data.data.length > 0) {
+      data.data.forEach((img, idx) => {
+        const url = img.url || img.b64_json;
+        if (!url) return;
+
+        const wrapper = document.createElement('div');
+        wrapper.style.cssText = 'background:var(--bg);border-radius:8px;overflow:hidden;border:1px solid var(--border);';
+
+        const imgEl = document.createElement('img');
+        imgEl.src = url;
+        imgEl.style.cssText = 'width:100%;display:block;cursor:pointer;';
+        imgEl.onclick = (e) => {
+          e.stopPropagation();
+          openLightbox(url);
+        };
+
+        const actions = document.createElement('div');
+        actions.style.cssText = 'padding:8px 12px;display:flex;gap:8px;align-items:center;';
+
+        const downloadBtn = document.createElement('button');
+        downloadBtn.innerHTML = '⬇ 下载';
+        downloadBtn.style.cssText = 'color:var(--accent);font-size:13px;background:none;border:none;cursor:pointer;padding:4px 0;';
+        downloadBtn.title = '下载原图';
+        downloadBtn.onclick = (e) => {
+          e.stopPropagation();
+          downloadImage(url, `generated_${Date.now()}_${idx+1}.png`);
+        };
+
+        const urlLabel = document.createElement('span');
+        urlLabel.textContent = url.length > 50 ? url.substring(0, 50) + '...' : url;
+        urlLabel.style.cssText = 'font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;';
+
+        // copy URL button
+        const copyUrlBtn = document.createElement('button');
+        copyUrlBtn.textContent = '复制链接';
+        copyUrlBtn.style.cssText = 'padding:4px 8px;border:1px solid var(--border);border-radius:4px;background:transparent;color:var(--muted);cursor:pointer;font-size:11px;';
+        copyUrlBtn.onclick = () => {
+          navigator.clipboard.writeText(url);
+          copyUrlBtn.textContent = '已复制';
+          setTimeout(() => copyUrlBtn.textContent = '复制链接', 2000);
+        };
+
+        actions.appendChild(downloadBtn);
+        actions.appendChild(urlLabel);
+        actions.appendChild(copyUrlBtn);
+        wrapper.appendChild(imgEl);
+        wrapper.appendChild(actions);
+        imagesDiv.appendChild(wrapper);
+      });
+
+      showMsg('gen-result', `✅ 成功生成 ${data.data.length} 张图片`, 'success');
+    } else {
+      showMsg('gen-result', '生成成功但未返回图片数据', 'info');
+    }
+  } catch (e) {
+    showMsg('gen-result', `网络错误：${e.message}`, 'error');
+  }
+
+  btn.disabled = false; btn.innerHTML = '✨ 生成图片';
+}
+
+// ── 图片灯箱预览 ──────────────────────────────────────────
+
+function openLightbox(url) {
+  const lb = document.getElementById('lightbox');
+  const img = document.getElementById('lightbox-img');
+  const dl = document.getElementById('lightbox-download');
+  img.src = url;
+  dl.href = url;
+  dl.download = 'image_' + Date.now() + '.png';
+  dl.onclick = (e) => {
+    e.preventDefault();
+    downloadImage(url, dl.download);
+  };
+  lb.style.display = 'flex';
+}
+
+function closeLightbox(e) {
+  if (e.target === e.currentTarget) {
+    document.getElementById('lightbox').style.display = 'none';
+  }
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') document.getElementById('lightbox').style.display = 'none';
+});
+
+// ── 跨域图片下载（兼容 kie.ai 临时链接 + COS）─────────────
+
+async function downloadImage(url, filename) {
+  try {
+    const resp = await fetch(url, { mode: 'cors' });
+    if (resp.ok) {
+      const blob = await resp.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+      return;
+    }
+  } catch(e) {
+    console.warn('fetch fallback:', e);
+  }
+  window.open(url, '_blank');
 }
 </script>
 </body>

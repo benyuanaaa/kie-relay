@@ -21,5 +21,8 @@ Thumbs.db
 # Data
 data/
 
+# Uploads (local fallback when COS not configured)
+uploads/
+
 # Alipay keys
 alipay_keys/

@@ -24,6 +24,10 @@ MODEL_PRICES = {
     "recraft": 2.0,
     "flux": 2.0,
     "sdxl": 1.0,
+    "nano-banana-pro": 2.0,
+    "nano-banana-edit": 2.0,
+    "gpt-image-2": 3.0,
+    "gpt-image-2-image-to-image": 3.0,
     "hailuo": 5.0,
     "kling": 4.0,
 }

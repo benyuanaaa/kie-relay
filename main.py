@@ -9,6 +9,9 @@ Endpoints:
     POST /v1/chat/completions    → Chat completion (with billing)
     GET  /v1/me                  → Check my balance
 
+  Upload (requires API key):
+    POST /api/upload             → Upload image to Tencent COS
+
   Admin (requires RELAY_API_KEY):
     POST /admin/users            → Create user
     GET  /admin/users            → List users
@@ -19,6 +22,7 @@ Endpoints:
 import base64
 import json
 import logging
+import os
 import secrets
 import time
 import uuid
@@ -27,8 +31,8 @@ from pathlib import Path
 from typing import Optional
 
 import httpx
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -36,6 +40,7 @@ from config import settings
 from kie_client import KieClient
 import user_manager
 import orders as order_manager
+import cos_client
 
 # Alipay (may not be configured)
 alipay_client: Optional["AlipayClient"] = None
@@ -80,6 +85,27 @@ async def lifespan(app: FastAPI):
         logger.info("Alipay not configured (skip)")
 
     logger.info("kie.ai relay started on %s:%s", settings.host, settings.port)
+
+    # Init Tencent COS if configured
+    if settings.cos_secret_id and settings.cos_secret_id not in ("", "your-cos-secret-id-here"):
+        import os as _os
+        _os.environ["COS_SECRET_ID"] = settings.cos_secret_id
+        _os.environ["COS_SECRET_KEY"] = settings.cos_secret_key
+        _os.environ["COS_REGION"] = settings.cos_region
+        _os.environ["COS_BUCKET"] = settings.cos_bucket
+        if settings.cos_public_domain:
+            _os.environ["COS_PUBLIC_DOMAIN"] = settings.cos_public_domain
+        cos_client.get_client()  # trigger init
+        logger.info("COS configured: bucket=%s region=%s", settings.cos_bucket, settings.cos_region)
+        app.state.cos_enabled = True
+    else:
+        logger.info("COS not configured - will use local file storage")
+        UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+        # Mount /uploads for local file serving
+        from fastapi.staticfiles import StaticFiles
+        app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
+        app.state.cos_enabled = False
+
     yield
     await kie_client.close()
     if alipay_client:
@@ -93,14 +119,19 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Serve the web UI
+# Serve the web UI and local uploads
 STATIC_DIR = Path(__file__).parent / "static"
+UPLOADS_DIR = Path(__file__).parent / "uploads"
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     async def index():
         return (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+
+# Always mount /uploads for local fallback (created on-demand)
+UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+# We mount lazily below after lifespan to know if COS is configured
 
 
 # ── Auth helpers ──────────────────────────────────────────────
@@ -160,6 +191,15 @@ MODEL_MAP = {
     "black-forest-labs/flux-pro": "black-forest-labs/flux-pro",
     "black-forest-labs/flux-dev": "black-forest-labs/flux-dev",
     "stability-ai/sdxl": "stability-ai/sdxl",
+    "google/nano-banana-pro": "google/nano-banana",
+    "nano-banana-pro": "google/nano-banana",
+    "google/nano-banana": "google/nano-banana",
+    "nano-banana": "google/nano-banana",
+    "google/nano-banana-edit": "google/nano-banana-edit",
+    "nano-banana-edit": "google/nano-banana-edit",
+    "gpt-image-2-text-to-image": "gpt-image-2-text-to-image",
+    "gpt-image-2": "gpt-image-2-text-to-image",
+    "gpt-image-2-image-to-image": "gpt-image-2-image-to-image",
     "hailuo/text-to-video": "hailuo/02-text-to-video-pro",
     "hailuo/image-to-video": "hailuo/02-image-to-video-standard",
     "kling/v2.1-standard": "kling/v2-1-standard",
@@ -189,6 +229,8 @@ class ImageGenerationRequest(BaseModel):
     n: int = Field(default=1, ge=1, le=4)
     size: Optional[str] = None
     negative_prompt: Optional[str] = None
+    image: Optional[str] = Field(default=None, description="Image URL for image-to-image (图生图)")
+    image_url: Optional[str] = Field(default=None, description="Alias for image field")
     response_format: Optional[str] = Field(default="url")
     model_config = {"extra": "allow"}
 
@@ -344,6 +386,59 @@ async def web_alipay_notify(request: Request):
         )
     return "success"
 
+
+# ── COS Upload endpoint ──────────────────────────────────────────
+
+ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
+
+@app.post("/api/upload")
+async def upload_file(request: Request, file: UploadFile = File(...)):
+    """Upload an image file to Tencent COS and return a public URL.
+
+    Requires a valid API key (Bearer token).
+    The returned URL can be used as ``image`` parameter for image-to-image generation.
+    """
+    await verify_user(request)
+
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No filename")
+
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail=f"Unsupported file type: {ext}")
+
+    content = await file.read()
+    if len(content) > 20 * 1024 * 1024:  # 20MB limit
+        raise HTTPException(status_code=413, detail="File too large (max 20MB)")
+
+    # Detect content type
+    content_type_map = {
+        ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+        ".gif": "image/gif", ".webp": "image/webp", ".bmp": "image/bmp",
+    }
+    content_type = content_type_map.get(ext, "application/octet-stream")
+
+    url = cos_client.upload_file(content, filename=file.filename, content_type=content_type)
+    if not url:
+        # Fallback: save locally and serve via /uploads/
+        logger.info("COS not configured, saving locally: %s", file.filename)
+        local_filename = f"{uuid.uuid4().hex}{ext}"
+        local_path = UPLOADS_DIR / local_filename
+        with open(local_path, "wb") as f:
+            f.write(content)
+        # Construct full URL from the request host
+        scheme = request.url.scheme
+        host = request.headers.get("host", f"localhost:{settings.port}")
+        url = f"{scheme}://{host}/uploads/{local_filename}"
+        logger.info("Local file saved: %s", url[:80])
+
+    logger.info("File uploaded: user=%s file=%s url=%s",
+                request.state.user["name"], file.filename, url[:80])
+
+    return {"url": url, "filename": file.filename, "size": len(content)}
+
+
+# ── Aspect Ratio helpers ─────────────────────────────────────────
 STANDARD_RATIOS = {"1:1": "1:1", "4:3": "4:3", "3:4": "3:4", "16:9": "16:9", "9:16": "9:16"}
 
 
@@ -456,6 +551,33 @@ async def create_image(request: Request, body: ImageGenerationRequest):
     input_data["aspect_ratio"] = _size_to_aspect_ratio(body.size)
     if body.n > 1:
         input_data["num_images"] = str(body.n)
+
+    # ── Image-to-image (图生图) support ──────────────────────
+    ref_image_url = body.image or body.image_url or None
+    if ref_image_url:
+        logger.info("Image-to-image enabled: ref_url=%s", ref_image_url[:80])
+
+        if kie_model == "google/nano-banana":
+            # nano-banana-pro 图生图 → nano-banana-edit
+            input_data["image_urls"] = [ref_image_url]
+            kie_model = "google/nano-banana-edit"
+            logger.info("Switched model: google/nano-banana -> google/nano-banana-edit")
+
+        elif kie_model == "gpt-image-2-text-to-image":
+            # gpt-image-2 图生图 → gpt-image-2-image-to-image
+            # 参数名是 input_urls (不是 image_urls)，aspect_ratio 自动
+            input_data["input_urls"] = [ref_image_url]
+            input_data["aspect_ratio"] = "auto"
+            # 去掉可能干扰的 image_urls
+            input_data.pop("image_urls", None)
+            kie_model = "gpt-image-2-image-to-image"
+            logger.info("Switched model: gpt-image-2 -> gpt-image-2-image-to-image (input_urls)")
+
+        else:
+            # 其他模型：通用 image_urls
+            input_data["image_urls"] = [ref_image_url]
+            logger.info("Using generic image_urls for model=%s", kie_model)
+
     extra = getattr(body, 'model_extra', None) or {}
     for key in ("image_size", "style", "seed", "guidance_scale",
                  "nsfw_checker", "expand_prompt", "rendering_speed"):
@@ -483,9 +605,20 @@ async def create_image(request: Request, body: ImageGenerationRequest):
     # Deduct balance only on success
     user_manager.deduct_balance(request.state.user_key, cost, body.model)
 
+    # ── Save generated images to COS for persistence ──────────
+    # kie.ai temp URLs expire after ~20 min, so we re-upload to COS
+    if cos_client.is_configured():
+        for img in images:
+            if img.get("url") and not img["url"].startswith(cos_client.COS_PUBLIC_DOMAIN):
+                cos_url = cos_client.upload_from_url(img["url"], subdir="images")
+                if cos_url:
+                    img["cos_url"] = cos_url
+                    img["url"] = cos_url  # replace temp URL with permanent COS URL
+
     return {
         "created": int(time.time()),
-        "data": [{"url": img.get("url"), "b64_json": img.get("b64_json")} for img in images],
+        "data": [{"url": img.get("url"), "b64_json": img.get("b64_json"),
+                  "cos_url": img.get("cos_url")} for img in images],
         "cost": cost,
         "balance_remaining": round(request.state.user["balance"] - cost, 1),
     }

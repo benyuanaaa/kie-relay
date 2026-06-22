@@ -40,8 +40,9 @@ class KieClient:
         if callback_url:
             payload["callBackUrl"] = callback_url
 
-        logger.info("Creating kie.ai task: model=%s input_keys=%s",
-                     model, list(input_data.keys()))
+        has_ref = "image_urls" in input_data or "input_urls" in input_data
+        logger.info("Creating kie.ai task: model=%s ref_img=%s input_keys=%s",
+                     model, has_ref, list(input_data.keys()))
         resp = await self._client.post("/api/v1/jobs/createTask", json=payload)
         body = resp.json()
 
